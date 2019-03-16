@@ -470,13 +470,17 @@ u32_t viVol = unpackN((u32_t*) (pCommand+14)) ;
 Serial.print("Volume : ");  
 Serial.println(viVol); 
 
-Serial.print("Set to  : ");  
-Serial.println((viVol*100) / 65535);
+
+u32_t  newvolume = ((100 * log10((viVol*100)/65))/5);
+
+
+Serial.print("new volume  : ");  
+Serial.println(newvolume);
 
 #ifdef ADAFRUIT_VS1053
-   vcplayer->setVolume((viVol  *100) / 65535,(viVol  *100) / 65535);
+   vcplayer->setVolume((viVol  *100) / 65536,(viVol  *100) / 65536);
 #else
-  vcplayer->setVolume((viVol  *100) / 65535);
+  vcplayer->setVolume(newvolume);
 #endif
 }
 

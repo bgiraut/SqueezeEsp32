@@ -1,10 +1,12 @@
 #ifndef slimproto_h
 #define slimproto_h
 
-#define ADAFRUIT_VS1053
+//#define ADAFRUIT_VS1053
 
+#include "config.h"
 #include <Arduino.h>
 #include "stRingBuffer.h"
+    #include <math.h>
     
 #ifdef ESP32
     #include <WiFi.h>
