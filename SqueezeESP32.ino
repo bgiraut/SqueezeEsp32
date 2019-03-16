@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "config.h"
 
 #ifdef ESP32
     #include <WiFi.h>
@@ -6,14 +7,8 @@
     #include <ESP8266WiFi.h>
 #endif
 
-//#include <WiFiUdp.h>
+#include <WiFiUdp.h>
 
-#define VS1053_MODULE
-#define ADAFRUIT_VS1053
-
-#define I2S_DAC_MODULE
-
-#define ADR_LMS "192.168.0.222"
 
 #ifdef VS1053_MODULE
   #include "flac_plugin.h"
@@ -70,7 +65,7 @@
 slimproto * vislimCli = 0;
 WiFiClient client;
 
-//WiFiUDP udp;
+WiFiUDP udp;
 
 #ifdef VS1053_MODULE
 void LoadPlugin(const uint16_t* plugin, uint16_t plugin_size)
@@ -87,7 +82,11 @@ while (i<plugin_size)
     val = plugin[i++];
     while (n--)
       {
-      viplayer.sciWrite(addr, val);
+      #ifdef ADAFRUIT_VS1053
+        viplayer.sciWrite(addr, val);
+      #else
+        viplayer.write_register(addr, val);
+      #endif
       }
     }
   else
@@ -95,7 +94,11 @@ while (i<plugin_size)
     while (n--)
       {
       val = plugin[i++];
-      viplayer.sciWrite(addr, val);
+      #ifdef ADAFRUIT_VS1053
+        viplayer.sciWrite(addr, val);
+      #else
+        viplayer.write_register(addr, val);
+      #endif
       }
     }
   }
@@ -132,6 +135,10 @@ void setup()
   
   wifiManager.autoConnect("SqueezeEsp");
 
+
+
+  
+
 /*
   WiFi.disconnect();
   WiFi.softAPdisconnect(true);
@@ -147,50 +154,64 @@ void setup()
   Serial.println("Connected");
 
 */
+
+ // start UDP server
+  udp.begin(UPD_PORT);
 }
-
-
-
 
 
 void loop()
 {
-//Send udp packet for autodiscovery
-   // udp.beginPacket("255.255.255.255",3483);
-   // udp.printf("e");
-   // udp.endPacket();
-    
-
-
+   Serial.println("Search for LMS server..."); 
   
-Serial.println("Connecting to server...");
+   //Send udp packet for autodiscovery
+   udp.beginPacket("255.255.255.255",UPD_PORT);
+   udp.printf("e");
+   udp.endPacket();
 
-// DEBUG server 3484
-// Real server 3483
+   delay(2000);
 
- if (!client.connect(ADR_LMS, 3483)) {
-      Serial.println("connection failed, pause and try connect...");
-      delay(2000);
-      return;
+   if(udp.parsePacket()> 0)
+    {
+    LMS_addr = udp.remoteIP();
+    Serial.print("Found LMS server @ "); 
+    Serial.println(LMS_addr);    
     }
 
-
-if(vislimCli) delete vislimCli,vislimCli = 0;
-
- #ifdef VS1053_MODULE
-  vislimCli = new slimproto(ADR_LMS, client, &viplayer);
- #else
-  vislimCli = new slimproto(ADR_LMS, client);
- #endif
-
-Serial.println("Connection Ok, send hello to LMS");
-delay(2000);
-reponseHelo *  HeloRsp = new reponseHelo(client);
-HeloRsp->sendResponse();
-
-while(client.connected())
+if(LMS_addr[0] != 0)
   {
-  vislimCli->HandleMessages();
-  vislimCli->HandleAudio();
+  Serial.println("Connecting to server...");
+  
+  // DEBUG server 3484
+  // Real server 3483
+  
+   if (!client.connect(LMS_addr, 3483)) {
+        Serial.println("connection failed, pause and try connect...");
+        delay(2000);
+        return;
+      }
+  
+  if(vislimCli) delete vislimCli,vislimCli = 0;
+  
+   #ifdef VS1053_MODULE
+    vislimCli = new slimproto(LMS_addr.toString(), client, &viplayer);
+   #else
+    vislimCli = new slimproto(LMS_addr.toString(), client);
+   #endif
+  
+  Serial.println("Connection Ok, send hello to LMS");
+  reponseHelo *  HeloRsp = new reponseHelo(client);
+  HeloRsp->sendResponse();
+  
+  while(client.connected())
+    {
+    vislimCli->HandleMessages();
+    vislimCli->HandleAudio();
+    }
   }
+ else
+ {
+ Serial.println("No LMS server found, try again in 10 seconds"); 
+ delay(10000);
+ }
 }
