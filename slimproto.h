@@ -202,6 +202,9 @@ private:
       uint32_t      ByteReceivedCurrentSong = 0;
 
       unsigned long TimeCounter = 0;
+
+      unsigned long LastStatMsg = 0;
+      
 			
 			void HandleCommand(byte pCommand [], int pSize);
 			void HandleStrmQCmd(byte pCommand [], int pSize);

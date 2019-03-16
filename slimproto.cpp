@@ -42,8 +42,6 @@ reponseSTAT::reponseSTAT(WiFiClient pClient) : responseBase(pClient)
 {
 // Clear the reponse struct
 memset((void *) &vcResponse,'\0', sizeof(vcResponse));
-
-
 }
 
 void reponseSTAT::sendResponse()
@@ -52,7 +50,7 @@ void reponseSTAT::sendResponse()
   memcpy((void *) vcResponse.opcode, "STAT", 4);
   
   vcResponse.sizeResponse = __builtin_bswap32(sizeof(vcResponse) - 8); // N'inclus pas la commande ni la taille. 
-  vcClient.write((char*) &vcResponse, sizeof(vcResponse));
+  vcClient.write((char*) &vcResponse, sizeof(vcResponse)); 
 }
 
 /**
@@ -79,8 +77,11 @@ vcAdrLMS = pAdrLMS;
 vcClient = pClient;	
 vcplayer = pPlayer;
 
+LastStatMsg = millis();
 TimeCounter = millis();
+
 EndTimeCurrentSong = StartTimeCurrentSong = 0;
+
 }
 
 slimproto::slimproto(WiFiClient pClient)
@@ -249,10 +250,6 @@ if(vcStreamClient.connected())
       } 
 }
 
-
-
-
-
 /**
  * Stop command
  */
@@ -305,6 +302,7 @@ else
 
 
 viResponse.sendResponse();
+LastStatMsg = millis();
 
 //debug 
 PrintByteArray((byte *)&viResponse.vcResponse, sizeof(viResponse.vcResponse));
@@ -546,6 +544,17 @@ else
   Serial.print("Size : ");
   Serial.println(pSize);  
 	}
+
+
+// Send Stat Message if last one is more than 5 seconds
+if(millis() - LastStatMsg >= ( 5 * 1000))
+   {
+   reponseSTAT viResponse(vcClient);
+   viResponse.vcResponse.elapsed_seconds = 0;
+   viResponse.sendResponse();
+   LastStatMsg = millis();
+   } 
+ 
 }
 
 void slimproto::ExtractCommand(byte * pBuf, int pSize)
