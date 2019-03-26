@@ -64,6 +64,7 @@
 
 slimproto * vislimCli = 0;
 WiFiClient client;
+int       viCnxAttempt = -1; 
 
 WiFiUDP udp;
 
@@ -107,6 +108,11 @@ while (i<plugin_size)
 #endif //VS1053_MODULE
 void setup()
 {
+
+
+  
+  viCnxAttempt = 0;
+  
   Serial.begin(115200);
   delay(1000);
   Serial.println("Connecting to WiFi");
@@ -154,58 +160,94 @@ void setup()
   Serial.println("Connected");
 
 */
-
- // start UDP server
-  udp.begin(UPD_PORT);
+   udp.begin(UPD_PORT);
 }
 
 
 void loop()
 {
-   Serial.println("Search for LMS server..."); 
-  
-   //Send udp packet for autodiscovery
-   udp.beginPacket("255.255.255.255",UPD_PORT);
-   udp.printf("e");
-   udp.endPacket();
+   
 
-   delay(2000);
+   // Reset addr of LMS
+   if(viCnxAttempt == -1)
+    LMS_addr = IPAddress(0,0,0,0);
 
-   if(udp.parsePacket()> 0)
+
+   // If no LMS found yet
+   if(LMS_addr[0] == 0)
     {
-    LMS_addr = udp.remoteIP();
-    Serial.print("Found LMS server @ "); 
-    Serial.println(LMS_addr);    
+     Serial.println("Search for LMS server..."); 
+     for(int nbSend = 0; nbSend < 10; nbSend++)
+      {
+       // start UDP server
+       //Send udp packet for autodiscovery
+       udp.flush();
+       udp.beginPacket("255.255.255.255",UPD_PORT);
+       udp.printf("e");
+       udp.endPacket();
+    
+       delay(2000);
+    
+       if(udp.parsePacket()> 0)
+        {
+        char upd_packet; 
+        upd_packet = udp.read();
+
+        if(upd_packet == 'E')
+          {
+          LMS_addr = udp.remoteIP();
+          Serial.print("Found LMS server @ "); 
+          Serial.println(LMS_addr); 
+          //udp.stop(); 
+          break; // LMS found we can go to the next step
+          }
+        }
+       else
+        delay(2000);
+      }
     }
 
 if(LMS_addr[0] != 0)
   {
-  Serial.println("Connecting to server...");
+  Serial.print("Connecting to server @");
+  Serial.print(LMS_addr);
+  Serial.println("..."); 
   
   // DEBUG server 3484
   // Real server 3483
+
+   viCnxAttempt++;
   
    if (!client.connect(LMS_addr, 3483)) {
         Serial.println("connection failed, pause and try connect...");
+
+        viCnxAttempt++;
+        if(viCnxAttempt > 30)
+          viCnxAttempt = -1; // Will erase LMS addr in the next attempt
+        
         delay(2000);
         return;
       }
+
+   
+  viCnxAttempt = 0;
   
   if(vislimCli) delete vislimCli,vislimCli = 0;
   
    #ifdef VS1053_MODULE
-    vislimCli = new slimproto(LMS_addr.toString(), client, &viplayer);
+    vislimCli = new slimproto(LMS_addr.toString(), & client, &viplayer);
    #else
     vislimCli = new slimproto(LMS_addr.toString(), client);
    #endif
   
   Serial.println("Connection Ok, send hello to LMS");
-  reponseHelo *  HeloRsp = new reponseHelo(client);
+  reponseHelo *  HeloRsp = new reponseHelo(&client);
   HeloRsp->sendResponse();
   
   while(client.connected())
     {
-    vislimCli->HandleMessages();
+    if(!vislimCli->HandleMessages())
+      break;
     vislimCli->HandleAudio();
     }
   }

@@ -6,7 +6,7 @@
 #define VOLUME  80
 
 
-responseBase::responseBase(WiFiClient pClient)
+responseBase::responseBase(WiFiClient * pClient)
   {
   vcClient = pClient;  
   }
@@ -21,24 +21,24 @@ responseBase::~responseBase()
 void responseBase::sendResponse()
 {
   vcResponse.sizeResponse = sizeof(vcResponse);
-  vcClient.write((char*) &vcResponse, sizeof(vcResponse));
+  vcClient->write((char*) &vcResponse, sizeof(vcResponse));
 }
 */
 
 
-reponseHelo::reponseHelo(WiFiClient pClient) : responseBase(pClient)
+reponseHelo::reponseHelo(WiFiClient * pClient) : responseBase(pClient)
 { 
 }
 
 void reponseHelo::sendResponse()
 {
   vcResponse.sizeResponse = __builtin_bswap32(sizeof(vcResponse) - 8); // N'inclus pas la commande ni la taille. 
-  vcClient.write((char*) &vcResponse, sizeof(vcResponse));
+  vcClient->write((char*) &vcResponse, sizeof(vcResponse));
 }
 
 
 
-reponseSTAT::reponseSTAT(WiFiClient pClient) : responseBase(pClient)
+reponseSTAT::reponseSTAT(WiFiClient * pClient) : responseBase(pClient)
 {
 // Clear the reponse struct
 memset((void *) &vcResponse,'\0', sizeof(vcResponse));
@@ -50,28 +50,31 @@ void reponseSTAT::sendResponse()
   memcpy((void *) vcResponse.opcode, "STAT", 4);
   
   vcResponse.sizeResponse = __builtin_bswap32(sizeof(vcResponse) - 8); // N'inclus pas la commande ni la taille. 
-  vcClient.write((char*) &vcResponse, sizeof(vcResponse)); 
+  vcClient->write((char*) &vcResponse, sizeof(vcResponse)); 
 }
 
 /**
 * Constructor 
 **/
 
-#define RINGBFSIZ 60000
-
 #ifdef ADAFRUIT_VS1053
   slimproto::slimproto(String pAdrLMS, WiFiClient pClient, Adafruit_VS1053 * pPlayer)
 #else
-  slimproto::slimproto(String pAdrLMS, WiFiClient pClient, VS1053 * pPlayer)
+  slimproto::slimproto(String pAdrLMS, WiFiClient * pClient, VS1053 * pPlayer)
 #endif
 {
 vcCommandSize = 0;
 
 vcPlayerStat = StopStatus;    /* 0 = stop , 1 = play , 2 = pause */
 
-// Initialize the ringbuffer for audio
-vcRingBuffer = new stRingBuffer(RINGBFSIZ);
 
+u32_t viFreeMem = system_get_free_heap_size();
+
+Serial.print("Free Memory for RingBuffer  : "), Serial.print(viFreeMem), Serial.println(" bytes");  
+
+// Initialize the ringbuffer for audio
+//vcRingBuffer = new stRingBuffer(RINGBFSIZ > viFreeMem ? viFreeMem-5000 : RINGBFSIZ); // if not enought memory for the ringbuffer use free memory minus 5ko
+vcRingBuffer = new stRingBuffer(RINGBFSIZ); // if not enought memory for the ringbuffer use free memory minus 5ko
 vcAdrLMS = pAdrLMS;
  
 vcClient = pClient;	
@@ -84,7 +87,7 @@ EndTimeCurrentSong = StartTimeCurrentSong = 0;
 
 }
 
-slimproto::slimproto(WiFiClient pClient)
+slimproto::slimproto(WiFiClient * pClient)
 {
 vcCommandSize = 0;
 
@@ -99,6 +102,7 @@ EndTimeCurrentSong = StartTimeCurrentSong = 0;
 
 slimproto::~slimproto()
 {
+if(vcRingBuffer) delete vcRingBuffer, vcRingBuffer = 0;  
 }
 
 int slimproto::HandleMessages()
@@ -106,13 +110,13 @@ int slimproto::HandleMessages()
 uint8_t viBuffer;
 int    viSizeRead;
 
- if(vcClient.connected())
+ if(vcClient->connected())
   {
-  if(vcCommandSize == 0 && vcClient.available() >= 2)
+  if(vcCommandSize == 0 && vcClient->available() >= 2)
     {
     uint8_t  viExtractSize[2];
 
-    vcClient.read(viExtractSize,2);
+    vcClient->read(viExtractSize,2);
 
     // Convert string size into integer
     vcCommandSize = (viExtractSize[0] << 8) | viExtractSize[1];
@@ -124,26 +128,26 @@ int    viSizeRead;
 
   if(vcCommandSize > 250)
     {
-    uint8_t availableSize = vcClient.available();
+    uint8_t availableSize = vcClient->available();
       
     Serial.println("Expected command size to big ??!!??");
     Serial.print("Available size : "),Serial.println(availableSize);
     uint8_t  viExtractCommand[availableSize];
-    viSizeRead =  vcClient.read(viExtractCommand,availableSize);
+    viSizeRead =  vcClient->read(viExtractCommand,availableSize);
     PrintByteArray(viExtractCommand,viSizeRead );
     vcCommandSize = 0;
     }
 
 
-  if(vcCommandSize && vcClient.available() >= vcCommandSize)
+  if(vcCommandSize && vcClient->available() >= vcCommandSize)
     {
     uint8_t  viExtractCommand[vcCommandSize]; 
 
-    viSizeRead =  vcClient.read(viExtractCommand,vcCommandSize); 
+    viSizeRead =  vcClient->read(viExtractCommand,vcCommandSize); 
 
     if(viSizeRead != vcCommandSize)
       {
-      Serial.println("Pas lu autant que prévu"); 
+      Serial.println("Not enought data as expected !!!"); 
       }
 
     if(vcCommandSize != 172)
@@ -153,6 +157,20 @@ int    viSizeRead;
     vcCommandSize = 0; 
     }
   }
+
+  // Send Stat Message if last one is more than 60 seconds
+if(millis() - LastStatMsg >= ( 60 * 1000))
+   {
+   Serial.println("No Stat request from 60 seconds, Is there any probem ?");
+    
+   //reponseSTAT viResponse(vcClient);
+   //viResponse.vcResponse.elapsed_seconds = 0;
+   //viResponse.sendResponse();
+   //LastStatMsg = millis();
+   return false;
+   } 
+
+return true;
 }
 
 
@@ -307,7 +325,7 @@ LastStatMsg = millis();
 //debug 
 PrintByteArray((byte *)&viResponse.vcResponse, sizeof(viResponse.vcResponse));
 
-//vcClient.write(staT, sizeof(staT));	
+//vcClient->write(staT, sizeof(staT));	
 }
 
 
@@ -402,19 +420,19 @@ Serial.println(viUrl);
 reponseSTAT viResponseSTMc(vcClient);
 memcpy((void *) viResponseSTMc.vcResponse.event, "STMc", 4);
 viResponseSTMc.sendResponse();
-//vcClient.write(staC, sizeof(staC));	
+//vcClient->write(staC, sizeof(staC));	
 // Send connected 	
 
 reponseSTAT viResponseSTMe(vcClient);
 memcpy((void *) viResponseSTMe.vcResponse.event, "STMe", 4);
 viResponseSTMe.sendResponse();
-//vcClient.write(staE, sizeof(staE));		
+//vcClient->write(staE, sizeof(staE));		
 
 // Send HTTP headers received from stream connection
 reponseSTAT viResponseSTMh(vcClient);
 memcpy((void *) viResponseSTMh.vcResponse.event, "STMh", 4);
 viResponseSTMh.sendResponse();
-//vcClient.write(staH, sizeof(staH));	
+//vcClient->write(staH, sizeof(staH));	
 
 // Send Track Started
 reponseSTAT viResponseSTMs(vcClient);
@@ -543,18 +561,7 @@ else
   Serial.println("]");
   Serial.print("Size : ");
   Serial.println(pSize);  
-	}
-
-
-// Send Stat Message if last one is more than 5 seconds
-if(millis() - LastStatMsg >= ( 5 * 1000))
-   {
-   reponseSTAT viResponse(vcClient);
-   viResponse.vcResponse.elapsed_seconds = 0;
-   viResponse.sendResponse();
-   LastStatMsg = millis();
-   } 
- 
+	} 
 }
 
 void slimproto::ExtractCommand(byte * pBuf, int pSize)

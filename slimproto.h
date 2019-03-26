@@ -3,6 +3,12 @@
 
 //#define ADAFRUIT_VS1053
 
+#ifdef ESP32
+  #define RINGBFSIZ 100000
+#else
+  #define RINGBFSIZ 20000
+#endif
+
 #include "config.h"
 #include <Arduino.h>
 #include "stRingBuffer.h"
@@ -58,7 +64,7 @@ struct __attribute__((packed)) audg_packet {
 class responseBase
 {
 public : 
-  responseBase(WiFiClient pClient);
+  responseBase(WiFiClient * pClient);
   ~responseBase();
   virtual void sendResponse() = 0;
 
@@ -69,7 +75,7 @@ struct stResponse{
                 long sizeResponse  = 1;
                 };
 
-  WiFiClient vcClient;
+  WiFiClient * vcClient;
   stResponse  vcResponse;
 };
 
@@ -77,7 +83,7 @@ struct stResponse{
 class reponseHelo : public responseBase {
   
 public : 
-reponseHelo(WiFiClient pClient);
+reponseHelo(WiFiClient * pClient);
 void sendResponse();
 
 private :
@@ -122,7 +128,7 @@ stResponse  vcResponse;
 class reponseSTAT : public responseBase {
   
 public : 
-reponseSTAT(WiFiClient pClient);
+reponseSTAT(WiFiClient * pClient);
 void sendResponse();
 
 private :
@@ -167,11 +173,11 @@ public:
       #ifdef ADAFRUIT_VS1053
         slimproto(String pAdrLMS, WiFiClient pClient, Adafruit_VS1053 * pPlayer);
       #else
-        slimproto(String pAdrLMS,WiFiClient pClient, VS1053 * pPlayer);
+        slimproto(String pAdrLMS,WiFiClient * pClient, VS1053 * pPlayer);
       #endif
 
 			
-      slimproto(WiFiClient pClient);
+      slimproto(WiFiClient * pClient);
       ~slimproto();
 			
 			/**
@@ -225,7 +231,7 @@ private:
      u32_t unpackN(u32_t *src);
      u16_t unpackn(u16_t *src);
       
-		 WiFiClient vcClient;            // Client to handle control messages
+		 WiFiClient * vcClient;            // Client to handle control messages
      WiFiClient vcStreamClient;      // Client to handle audio stream
      
      /*  
