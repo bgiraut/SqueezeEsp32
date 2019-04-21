@@ -160,7 +160,7 @@ void setup()
   Serial.println("Connected");
 
 */
-   udp.begin(UPD_PORT);
+   udp.begin(UDP_PORT);
 }
 
 
@@ -182,7 +182,7 @@ void loop()
        // start UDP server
        //Send udp packet for autodiscovery
        udp.flush();
-       udp.beginPacket("255.255.255.255",UPD_PORT);
+       udp.beginPacket("255.255.255.255",UDP_PORT);
        udp.printf("e");
        udp.endPacket();
     
