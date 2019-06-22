@@ -12,7 +12,7 @@ The configuration is define in the file config.h via some #define
 #define I2S_DAC_MODULE = I2S DAC
 
 
-I have try two differents library for the module VS_1053. Set #define ADAFRUIT_VS1053 to switch to the second library. I add some issues with the library so i decide to stay away from but you can do some tests by your side. 
+I have try two differents library for the module VS_1053. Set #define ADAFRUIT_VS1053 to switch to the second library. I had some issues with the library so i decide to stay away from but you can do some tests by your side. 
 
 Wifi configuration is done via a AP started on the first boot. It use the library https://github.com/bbx10/WiFiManager
 

@@ -10,7 +10,7 @@
 
 //#define I2S_DAC_MODULE
 
-#define DEFAULT_LMS_ADDR "192.168.0.222"
+#define DEFAULT_LMS_ADDR "192.168.42.123"
 
 #define UDP_PORT 3483
 
