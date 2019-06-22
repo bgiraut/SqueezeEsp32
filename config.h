@@ -12,7 +12,7 @@
 
 #define DEFAULT_LMS_ADDR "192.168.0.222"
 
-#define UPD_PORT 3483
+#define UDP_PORT 3483
 
 static IPAddress LMS_addr(0,0,0,0);
 

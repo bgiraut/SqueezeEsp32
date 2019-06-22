@@ -13,6 +13,14 @@
 #ifdef VS1053_MODULE
   #include "flac_plugin.h"
 
+/*
+DIN = 22
+BCK = 25
+LCK = 26
+
+
+*/
+
 
   #undef I2S_DAC_MODULE
   #ifdef ESP32
@@ -117,8 +125,9 @@ void setup()
   delay(1000);
   Serial.println("Connecting to WiFi");
 
-  SPI.begin();
+
   #ifdef VS1053_MODULE
+    SPI.begin();
     viplayer.begin();
     #ifndef ADAFRUIT_VS1053
       viplayer.switchToMp3Mode();
@@ -160,7 +169,7 @@ void setup()
   Serial.println("Connected");
 
 */
-   udp.begin(UPD_PORT);
+   udp.begin(UDP_PORT);
 }
 
 
@@ -182,7 +191,7 @@ void loop()
        // start UDP server
        //Send udp packet for autodiscovery
        udp.flush();
-       udp.beginPacket("255.255.255.255",UPD_PORT);
+       udp.beginPacket("255.255.255.255",UDP_PORT);
        udp.printf("e");
        udp.endPacket();
     
@@ -237,7 +246,7 @@ if(LMS_addr[0] != 0)
    #ifdef VS1053_MODULE
     vislimCli = new slimproto(LMS_addr.toString(), & client, &viplayer);
    #else
-    vislimCli = new slimproto(LMS_addr.toString(), client);
+    vislimCli = new slimproto(LMS_addr.toString(), & client);
    #endif
   
   Serial.println("Connection Ok, send hello to LMS");

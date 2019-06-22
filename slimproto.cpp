@@ -6,6 +6,38 @@
 #define VOLUME  80
 
 
+#ifdef I2S_DAC_MODULE
+// Called when a metadata event occurs (i.e. an ID3 tag, an ICY block, etc.
+void MDCallback(void *cbData, const char *type, bool isUnicode, const char *string)
+{
+  const char *ptr = reinterpret_cast<const char *>(cbData);
+  (void) isUnicode; // Punt this ball for now
+  // Note that the type and string may be in PROGMEM, so copy them to RAM for printf
+  char s1[32], s2[64];
+  strncpy_P(s1, type, sizeof(s1));
+  s1[sizeof(s1)-1]=0;
+  strncpy_P(s2, string, sizeof(s2));
+  s2[sizeof(s2)-1]=0;
+  Serial.printf("METADATA(%s) '%s' = '%s'\n", ptr, s1, s2);
+  Serial.flush();
+}
+
+// Called when there's a warning or error (like a buffer underflow or decode hiccup)
+void StatusCallback(void *cbData, int code, const char *string)
+{
+  const char *ptr = reinterpret_cast<const char *>(cbData);
+  // Note that the string may be in PROGMEM, so copy it to RAM for printf
+  char s1[64];
+  strncpy_P(s1, string, sizeof(s1));
+  s1[sizeof(s1)-1]=0;
+  Serial.printf("STATUS(%s) '%d' = '%s'\n", ptr, code, s1);
+  Serial.flush();
+}
+
+#endif //I2S_DAC_MODULE
+
+
+
 responseBase::responseBase(WiFiClient * pClient)
   {
   vcClient = pClient;  
@@ -54,9 +86,10 @@ void reponseSTAT::sendResponse()
 }
 
 /**
-* Constructor 
+* Constructor for VS1053 version
 **/
 
+#ifdef VS1053_MODULE
 #ifdef ADAFRUIT_VS1053
   slimproto::slimproto(String pAdrLMS, WiFiClient pClient, Adafruit_VS1053 * pPlayer)
 #else
@@ -87,22 +120,42 @@ EndTimeCurrentSong = StartTimeCurrentSong = 0;
 
 }
 
-slimproto::slimproto(WiFiClient * pClient)
+#else
+
+/**
+* Constructor for DAC version
+**/
+slimproto::slimproto(String pAdrLMS, WiFiClient * pClient)
 {
+vcDacAudioGen = 0;
+vcDacFile = 0;
+vcDacBuff = 0;
+vcDacOut = 0;
+vcAdrLMS = pAdrLMS;
+  
 vcCommandSize = 0;
 
 vcPlayerStat = StopStatus;    /* 0 = stop , 1 = play , 2 = pause */
 
 vcClient = pClient;  
 
+LastStatMsg = millis();
 TimeCounter = millis();
 EndTimeCurrentSong = StartTimeCurrentSong = 0;  
 }
 
+#endif //VS1053_MODULE
 
 slimproto::~slimproto()
 {
-if(vcRingBuffer) delete vcRingBuffer, vcRingBuffer = 0;  
+if(vcRingBuffer) delete vcRingBuffer, vcRingBuffer = 0;
+
+#ifdef I2S_DAC_MODULE 
+  if(vcDacAudioGen) delete vcDacAudioGen, vcDacAudioGen = 0;
+  if(vcDacFile) delete vcDacFile, vcDacFile = 0;
+  if(vcDacBuff) delete vcDacBuff, vcDacBuff = 0;  
+  if(vcDacOut) delete vcDacOut,vcDacOut = 0;
+#endif
 }
 
 int slimproto::HandleMessages()
@@ -175,8 +228,9 @@ return true;
 
 
 
+#ifdef VS1053_MODULE
 
-int slimproto::HandleAudio()
+int slimproto::HandleAudio() // Handle audio in vs1053 mode
 {
 // Lire des données du stream et les envoyer dans le vs1053      
 uint32_t viRead;
@@ -267,16 +321,36 @@ if(vcStreamClient.connected())
       yield() ;
       } 
 }
+#else // Handle Audio in DAC mode
+int slimproto::HandleAudio()
+{
+if(vcDacAudioGen && vcPlayerStat != PauseStatus)
+  if(vcDacAudioGen->isRunning()){
+  if(!vcDacAudioGen->loop())  vcDacAudioGen->stop();
+  }   
+}
 
+#endif // VS1053_MODULE
 /**
  * Stop command
  */
 
 void slimproto::HandleStrmQCmd(byte pCommand [], int pSize)
 {
-#ifndef ADAFRUIT_VS1053
-  vcplayer->stopSong();
-#endif
+#ifdef VS1053_MODULE 
+  #ifndef ADAFRUIT_VS1053
+    vcplayer->stopSong();
+  #endif
+#else
+  if(vcDacAudioGen)
+    vcDacAudioGen->stop();
+    
+  if(vcDacAudioGen) delete vcDacAudioGen, vcDacAudioGen = 0;
+  if(vcDacOut) delete vcDacOut, vcDacOut = 0;
+  if(vcDacBuff) delete vcDacBuff, vcDacBuff = 0;
+  if(vcDacFile) delete vcDacFile, vcDacFile = 0;
+
+#endif //VS1053_MODULE
   
 reponseSTAT * viResponse = 0;
   
@@ -336,9 +410,12 @@ PrintByteArray((byte *)&viResponse.vcResponse, sizeof(viResponse.vcResponse));
 void slimproto::HandleStrmSCmd(byte pCommand [], int pSize)
 {
 char viUrl[pSize +100];
+char viUrl2[pSize +100];
 byte viTmpUrl[pSize +100];
 
+
 memset(viUrl,0,sizeof(viUrl));
+memset(viUrl2,0,sizeof(viUrl2));
 memset(viTmpUrl,0,sizeof(viTmpUrl));
   
   
@@ -349,48 +426,81 @@ memcpy(&strmInfo, pCommand+4, sizeof(strmInfo));
 if(strmInfo.formatbyte == 'm')
 {
 Serial.println("Format MP3"); 
+
+#ifdef I2S_DAC_MODULE
+vcDacAudioGen = new AudioGeneratorMP3(); 
+vcDacAudioGen->RegisterStatusCB(StatusCallback, (void*)"mp3");
+#endif //I2S_DAC_MODULE
+
 }
-// Format FLAX
+// Format FLAC
 else if(strmInfo.formatbyte == 'f')
 {
 Serial.println("Format flac"); 
+
+#ifdef I2S_DAC_MODULE
+vcDacAudioGen = new AudioGeneratorFLAC(); 
+vcDacAudioGen->RegisterStatusCB(StatusCallback, (void*)"flac");
+#endif //I2S_DAC_MODULE
+
 }
 else if(strmInfo.formatbyte == '0')
 {
 Serial.println("Format ogg"); 
+#ifdef I2S_DAC_MODULE
+  Serial.println("Ogg format not supported in DAC mode"); 
+  return;
+#endif //I2S_DAC_MODULE
 }
 
 
 ByteArrayCpy(viTmpUrl,pCommand+sizeof(strmInfo)+4 , pSize-sizeof(strmInfo)-4);
-
-if(strmInfo.server_ip[0] == 0){
- 
- //strmInfo.server_ip[0] = 192;
- //strmInfo.server_ip[1] = 168;
- //strmInfo.server_ip[2] = 0;
- //strmInfo.server_ip[3] = 222;
-
- vcAdrLMS.toCharArray(viUrl, pSize);
-}
+if(strmInfo.server_ip[0] == 0)
+  {
+  #ifdef VS1053_MODULE
+    vcAdrLMS.toCharArray(viUrl, pSize);
+  #else
+    vcAdrLMS.toCharArray(viUrl2, pSize);
+    sprintf(viUrl,"http://%s:9000/%s",viUrl2,"stream.mp3"); 
+  #endif //VS1053_MODULE
+  }
  
 else
+  {
+  #ifdef VS1053_MODULE
   sprintf(viUrl, "%d.%d.%d.%d",strmInfo.server_ip[0],strmInfo.server_ip[1],strmInfo.server_ip[2],strmInfo.server_ip[3]); 
+  #else
+    sprintf(viUrl, "http://%d.%d.%d.%d:9000%s",strmInfo.server_ip[0],strmInfo.server_ip[1],strmInfo.server_ip[2],strmInfo.server_ip[3],(char*) viTmpUrl); 
+  #endif //VS1053_MODULE
+  }
 
 Serial.print("Url : "); 
 Serial.println(viUrl); 
 
 
+Serial.println("Let's play music");
 
-
-  //file = new AudioFileSourceICYStream((char *) viUrl);
-  //file = new AudioFileSourceICYStream("http://192.168.0.11:9000/stream.mp3");
-
+#ifdef VS1053_MODULE
  #ifndef ADAFRUIT_VS1053
   vcplayer->startSong();
  #else
   //vcplayer-> begin();
   //vcplayer->softReset();
- #endif
+ #endif //ADAFRUIT_VS1053
+
+#else // Mode DAC
+  vcDacFile = new AudioFileSourceICYStream((char *) viUrl); 
+  vcDacFile->RegisterMetadataCB(MDCallback, (void*)"ICY");
+
+  // Use 8k of audio buffer
+  vcDacBuff = new AudioFileSourceBuffer(vcDacFile, 4096);
+  vcDacBuff->RegisterStatusCB(StatusCallback, (void*)"buffer");
+  
+  vcDacOut = new AudioOutputI2S();
+  vcDacAudioGen->begin(vcDacBuff, vcDacOut); 
+  vcDacAudioGen->loop();
+#endif //VS1053_MODULE
+
  
 
   // on flag l'état à 'lecture'
@@ -401,20 +511,21 @@ Serial.println(viUrl);
 
   ByteReceivedCurrentSong = 0;
 
+#ifdef VS1053_MODULE
   Serial.println("connecting to stream... ");
       
     if (!vcStreamClient.connect(viUrl, 9000)) {
       Serial.println("Connection failed");
       return;
     }
-
-
   Serial.println("Connexion ok"); 
-  
   Serial.print("Ask for : "),Serial.println(String((char*) viTmpUrl));
   vcStreamClient.print(String("") + String((char*) viTmpUrl) + "\r\n" +
                   "Host: " + viUrl + "\r\n" + 
                   "Connection: close\r\n\r\n");
+#endif VS1053_MODULE
+
+                  
 // Send connect
 
 reponseSTAT viResponseSTMc(vcClient);
@@ -474,30 +585,25 @@ vcPlayerStat = PlayStatus;
  */
 void slimproto::HandleAudgCmd(byte pCommand [], int pSize)
 {
-audg_packet viVolDef;
+#ifdef VS1053_MODULE
+  audg_packet viVolDef;
+  memcpy(&viVolDef, pCommand, sizeof(audg_packet));
+  u32_t viVol = unpackN((u32_t*) (pCommand+14)) ;
+  
+  Serial.print("Volume : ");  
+  Serial.println(viVol); 
+  u32_t  newvolume = ((100 * log10((viVol*100)/65))/5);
+  Serial.print("new volume  : ");  
+  Serial.println(newvolume);
 
-memcpy(&viVolDef, pCommand, sizeof(audg_packet));
-
-
-u32_t viVol = unpackN((u32_t*) (pCommand+14)) ;
-
-
-
-Serial.print("Volume : ");  
-Serial.println(viVol); 
-
-
-u32_t  newvolume = ((100 * log10((viVol*100)/65))/5);
-
-
-Serial.print("new volume  : ");  
-Serial.println(newvolume);
-
-#ifdef ADAFRUIT_VS1053
-   vcplayer->setVolume((viVol  *100) / 65536,(viVol  *100) / 65536);
+  #ifdef ADAFRUIT_VS1053
+     vcplayer->setVolume((viVol  *100) / 65536,(viVol  *100) / 65536);
+  #else
+    vcplayer->setVolume(newvolume);
+  #endif //ADAFRUIT_VS1053
 #else
-  vcplayer->setVolume(newvolume);
-#endif
+  Serial.println("Sorry, no volume control in DAC mode");
+#endif // VS1053_MODULE
 }
 
 

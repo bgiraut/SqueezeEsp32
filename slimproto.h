@@ -20,11 +20,21 @@
     #include <ESP8266WiFi.h>	
 #endif
 
-#ifdef ADAFRUIT_VS1053
-    #include <Adafruit_VS1053.h>
-  #else
-    #include <VS1053.h>
-  #endif
+#ifdef VS1053_MODULE
+  #ifdef ADAFRUIT_VS1053
+      #include <Adafruit_VS1053.h>
+    #else
+      #include <VS1053.h>
+    #endif
+#endif //VS1053_MODULE
+
+#ifdef I2S_DAC_MODULE
+  #include "AudioFileSourceICYStream.h"
+  #include "AudioFileSourceBuffer.h"
+  #include "AudioGeneratorMP3.h"
+  #include "AudioGeneratorFLAC.h"
+  #include "AudioOutputI2SNoDAC.h"
+#endif 
 
 
 struct __attribute__((packed)) StrmStructDef
@@ -170,14 +180,17 @@ typedef struct audg_packet AudgStruct;
 class slimproto
 {
 public:
-      #ifdef ADAFRUIT_VS1053
-        slimproto(String pAdrLMS, WiFiClient pClient, Adafruit_VS1053 * pPlayer);
-      #else
-        slimproto(String pAdrLMS,WiFiClient * pClient, VS1053 * pPlayer);
+
+      #ifdef VS1053_MODULE
+        #ifdef ADAFRUIT_VS1053
+          slimproto(String pAdrLMS, WiFiClient pClient, Adafruit_VS1053 * pPlayer);
+        #else
+          slimproto(String pAdrLMS,WiFiClient * pClient, VS1053 * pPlayer);
+        #endif
       #endif
 
 			
-      slimproto(WiFiClient * pClient);
+      slimproto(String pAdrLMS, WiFiClient * pClient);
       ~slimproto();
 			
 			/**
@@ -201,7 +214,7 @@ private:
 
       int vcCommandSize;
 
-       uint8_t*         ringbuf ;                                 // Ringbuffer for VS1053
+     //  uint8_t*         ringbuf ;                                 // Ringbuffer for VS1053
 
       unsigned long StartTimeCurrentSong = 0;
       unsigned long EndTimeCurrentSong = 0;
@@ -240,12 +253,22 @@ private:
       #define VS1053_DREQ   D3 (5) 
       */
 
-
-      #ifdef ADAFRUIT_VS1053
-        Adafruit_VS1053 * vcplayer;
-      #else
-         VS1053 * vcplayer;
+      #ifdef VS1053_MODULE
+        #ifdef ADAFRUIT_VS1053
+          Adafruit_VS1053 * vcplayer;
+        #else
+           VS1053 * vcplayer;
+        #endif
       #endif
+
+      
+      #ifdef I2S_DAC_MODULE
+        AudioGenerator *            vcDacAudioGen = 0;
+        AudioFileSourceICYStream *  vcDacFile = 0;
+        AudioFileSourceBuffer *     vcDacBuff = 0;
+        AudioOutputI2S *            vcDacOut = 0;
+      #endif
+      
 
       enum player_status {
           StopStatus,
